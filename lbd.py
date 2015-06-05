@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy
 import itertools
 
 from scipy import linalg
@@ -14,7 +13,7 @@ class Sanitize_records_for_gmm(object):
 
     """ Merge records data for gmm   """
 
-    def __init__(self, dimension=0, cv_types=['spherical', 'tied', 'diag', 'full'], n_components_range=range(1, 30)):
+    def __init__(self, dimension=0, cv_types=['full'], n_components_range=range(1, 30)):
         self.times = []
         self.dimension = dimension
         self.positions = []
@@ -85,9 +84,9 @@ class Sanitize_records_for_gmm(object):
         X = self.to_array()
         if plot_type == 'raw':
             if ax is None:
-                plt.scatter(X[:, 0], X[:, 1])
+                plt.scatter(X[:, 0], X[:, 1],.8)
             else:
-                ax.scatter(X[:, 0], X[:, 1])
+                ax.scatter(X[:, 0], X[:, 1],.8)
         elif plot_type == 'mean':
             sdt_dataset = []
             mean_dataset = []
@@ -107,7 +106,7 @@ class Sanitize_records_for_gmm(object):
         for cv_type in self.cv_types:
             for n_components in self.n_components_range:
                 # Fit a mixture of Gaussians with EM
-                gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+                gmm = mixture.VBGMM(n_components=n_components, covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
