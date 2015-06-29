@@ -24,7 +24,7 @@ class Sanitize_records_for_gmm(object):
         self.__gmm_generated = False
         self.bics = []
         # For BIC optimisation
-        self.cv_types = cv_types  # ['full']#['spherical', 'tied', 'diag', 'full']
+        self.cv_types = cv_types  # ['spherical', 'tied', 'diag', 'full']
         self.n_components_range = n_components_range
 
     def add_record(self, times, positions, speeds=None):
@@ -106,7 +106,7 @@ class Sanitize_records_for_gmm(object):
         for cv_type in self.cv_types:
             for n_components in self.n_components_range:
                 # Fit a mixture of Gaussians with EM
-                gmm = mixture.VBGMM(n_components=n_components, covariance_type=cv_type)
+                gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
