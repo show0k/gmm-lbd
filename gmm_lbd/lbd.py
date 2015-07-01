@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
+
 import numpy as np
 import itertools
+from itertools import cycle
+
 
 from scipy import linalg
 import matplotlib as mpl
@@ -24,7 +28,7 @@ class Sanitize_records_for_gmm(object):
         self.__gmm_generated = False
         self.bics = []
         # For BIC optimisation
-        self.cv_types = cv_types  # ['spherical', 'tied', 'diag', 'full']
+        self.cv_types = cv_types  # ['full']#['spherical', 'tied', 'diag', 'full']
         self.n_components_range = n_components_range
 
     def add_record(self, times, positions, speeds=None):
@@ -84,9 +88,9 @@ class Sanitize_records_for_gmm(object):
         X = self.to_array()
         if plot_type == 'raw':
             if ax is None:
-                plt.scatter(X[:, 0], X[:, 1],.8)
+                plt.scatter(X[:, 0], X[:, 1], .8)
             else:
-                ax.scatter(X[:, 0], X[:, 1],.8)
+                ax.scatter(X[:, 0], X[:, 1], .8)
         elif plot_type == 'mean':
             sdt_dataset = []
             mean_dataset = []
@@ -106,7 +110,7 @@ class Sanitize_records_for_gmm(object):
         for cv_type in self.cv_types:
             for n_components in self.n_components_range:
                 # Fit a mixture of Gaussians with EM
-                gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+                gmm = mixture.VBGMM(n_components=n_components, covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
@@ -142,6 +146,37 @@ class Sanitize_records_for_gmm(object):
         spl.set_xlabel('Number of components')
         spl.legend([b[0] for b in bars], self.cv_types)
         return ax
+
+    def plot_ellipses(self, ax=None, colors=None):
+        if not self.__gmm_generated:
+            self.gen_gmm()
+        Y_ = self.gmm.predict(self._X)
+        if colors is not None:
+            colors = cycle(colors)
+        else:
+            colors = cycle(['r', 'g', 'b', 'c', 'm'])
+        if ax is None:
+            plt.figure(figsize=(15, 5))
+            ax = plt.gca()
+
+        for factor in np.linspace(0.5, 4.0, 8):
+            for i, (mean, covar, color) in enumerate(zip(self.gmm.means_, self.gmm._get_covars(), colors)):
+
+                if not np.any(Y_ == i):
+                    continue
+                plt.scatter(self._X[Y_ == i, 0], self._X[Y_ == i, 1], .8, color=color)
+                v, w = linalg.eigh(covar)
+                u = w[0] / linalg.norm(w[0])
+                angle = np.arctan(u[1] / u[0])
+                angle = 180 * angle / np.pi  # convert to degrees
+                width, height = factor * np.sqrt(v)
+
+                ell = Ellipse(xy=mean, width=width, height=height,
+                              angle=angle)
+                ell.set_alpha(0.25)
+                if colors is not None:
+                    ell.set_color(next(colors))
+                ax.add_artist(ell)
 
     def plot_gmm(self, ax=None):
         if not self.__gmm_generated:
