@@ -13,11 +13,38 @@ from sklearn import mixture
 import json
 
 
+class Custom_gmm(mixture.GMM):
+
+    def __init__(self, n_components=1, covariance_type='diag',
+                 random_state=None, thresh=None, tol=1e-3, min_covar=1e-3,
+                 n_iter=100, n_init=1, params='wmc', init_params='wmc',
+                 verbose=0):
+        super(Custom_gmm, self).__init__(n_components=n_components, covariance_type=covariance_type,
+                                         random_state=random_state, thresh=thresh, tol=tol, min_covar=min_covar,
+                                         n_iter=n_iter, n_init=n_init, params=params, init_params=init_params)
+
+    # override bic
+    def bic(self, X):
+        """Bayesian information criterion for the current model fit
+        and the proposed data
+
+        Parameters
+        ----------
+        X : array of shape(n_samples, n_dimensions)
+
+        Returns
+        -------
+        bic: float (the lower the better)
+        """
+        return (-2 * self.score(X).sum() +
+                self._n_parameters() * 3 * np.log(X.shape[0]))
+
+
 class Sanitize_records_for_gmm(object):
 
     """ Merge records data for gmm   """
 
-    def __init__(self, dimension=0, cv_types=['full'], n_components_range=range(1, 30)):
+    def __init__(self, dimension=0, cv_types=['full'], n_components_range=range(1, 30),):
         self.times = []
         self.dimension = dimension
         self.positions = []
@@ -103,14 +130,17 @@ class Sanitize_records_for_gmm(object):
             plt.fill_between(X[:, 0], Ytempmin, Ytempmax, alpha=0.3)
             plt.plot(X[:, 0], np.array(mean_dataset))
 
-    def gen_gmm(self):
+    def gen_gmm(self, gmm_type='sklearn'):
         self.__gmm_generated = True
         X = self.to_array()
         lowest_bic = np.infty
         for cv_type in self.cv_types:
             for n_components in self.n_components_range:
                 # Fit a mixture of Gaussians with EM
-                gmm = mixture.VBGMM(n_components=n_components, covariance_type=cv_type)
+                if gmm_type == 'sklearn':
+                    gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+                else:
+                    gmm = Custom_gmm(n_components=n_components, covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
