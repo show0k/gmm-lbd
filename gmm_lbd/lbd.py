@@ -1,5 +1,8 @@
+# coding: utf-8
+
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+from collections import OrderedDict
 
 import numpy as np
 import itertools
@@ -13,15 +16,15 @@ from sklearn import mixture
 import json
 
 
-class Custom_gmm(mixture.GMM):
+class LbdGMM(mixture.GMM):
 
     def __init__(self, n_components=1, covariance_type='diag',
                  random_state=None, thresh=None, tol=1e-3, min_covar=1e-3,
                  n_iter=100, n_init=1, params='wmc', init_params='wmc',
                  verbose=0):
-        super(Custom_gmm, self).__init__(n_components=n_components, covariance_type=covariance_type,
-                                         random_state=random_state, thresh=thresh, tol=tol, min_covar=min_covar,
-                                         n_iter=n_iter, n_init=n_init, params=params, init_params=init_params)
+        super(LbdGMM, self).__init__(n_components=n_components, covariance_type=covariance_type,
+                                     random_state=random_state, thresh=thresh, tol=tol, min_covar=min_covar,
+                                     n_iter=n_iter, n_init=n_init, params=params, init_params=init_params)
 
     # override bic
     def bic(self, X):
@@ -40,7 +43,157 @@ class Custom_gmm(mixture.GMM):
                 self._n_parameters() * 3 * np.log(X.shape[0]))
 
 
-class Sanitize_records_for_gmm(object):
+class GmmManager(object):
+
+    """ Provide a list of gaussian mixture models"""
+
+    def __init__(self, cv_types=['full'], n_components_range=range(1, 30),):
+        self.datasets = OrderedDict()
+        self.gmms = OrderedDict()
+        self.bics = OrderedDict()
+        # For BIC optimisation
+        self.cv_types = cv_types  # ['full']#['spherical', 'tied', 'diag', 'full']
+        self.n_components_range = n_components_range
+
+    def add_dataset(self, data, name=None):
+        """ :param data :array of shape(N datapoints, D dimensions)
+            :param name : name of the dataset. Automaticly set to the len of the present dataset if None
+            return the name of the dataset in the dictionnary of datasets
+        """
+        name = str(len(self.datasets)) if name is None else name
+        if name in self.datasets.keys():
+            self.datasets[name] = np.concatenate(self.datasets[name], data)
+        else:
+            self.datasets[name] = data
+        self.gmms[name] = None
+        return name
+
+    def gen_gmm(self, dataset_name, cv_types=None, n_components_range=None):
+        """ :param dataset_name : dataset_name of the dataset to generate GMM
+            :param cv_types : types of              
+        return the GMM generated
+        """
+        cv_types = self.cv_types if cv_types is None else cv_types
+        n_components_range = self.n_components_range if n_components_range is None else n_components_range
+        X = self.datasets[dataset_name]
+        self.bics[dataset_name] = []
+        lowest_bic = np.infty
+        for cv_type in self.cv_types:
+            for n_components in n_components_range:
+                gmm = LbdGMM(n_components=n_components, covariance_type=cv_type)
+                gmm.fit(X)
+                self.bics[dataset_name].append(gmm.bic(X))
+                if self.bics[dataset_name][-1] < lowest_bic:
+                    lowest_bic = self.bics[dataset_name][-1]
+                    best_gmm = gmm
+        self.gmms[dataset_name] = best_gmm
+        return best_gmm
+
+    def plot_ellipses_and_samples(self, dataset_name=None, ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 3.0, 5)):
+        # Auto set data the dataset_name to the first inserted dataset
+        dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
+
+        # generate gmm if not already done
+        if self.gmms[dataset_name] is None:
+            self.gen_gmm(dataset_name)
+        X = self.datasets[dataset_name]
+        Y_ = self.gmms[dataset_name].predict(X)
+        colors = cycle(colors)
+
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = fig.add_subplot(111)
+
+        for factor in elipses_shapes:
+            for i, (mean, covar, color) in enumerate(zip(self.gmms[dataset_name].means_, self.gmms[dataset_name]._get_covars(), colors)):
+
+                if not np.any(Y_ == i):
+                    continue
+                plt.scatter(X[Y_ == i, 0], X[Y_ == i, 1], .8, color=color)
+                v, w = linalg.eigh(covar)
+                u = w[0] / linalg.norm(w[0])
+                angle = np.arctan(u[1] / u[0])
+                angle = 180 * angle / np.pi  # convert to degrees
+                width, height = factor * np.sqrt(v)
+
+                ell = Ellipse(xy=mean, width=width, height=height,
+                              angle=angle)
+                ell.set_alpha(0.25)
+                if colors is not None:
+                    ell.set_color(next(colors))
+                ax.add_artist(ell)
+        return ax
+
+    def plot_ellipses(self, means, covars,  xlim=(0, 10), ylim=(0, 10), ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 4.0, 5)):
+        # Auto set data the dataset_name to the first insert item
+        colors = cycle(colors)
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = plt.gca()
+            ax.set_xlim(xlim)
+            ax.set_ylim(ylim)
+
+        for factor in elipses_shapes:
+            for i, (mean, covar, color) in enumerate(zip(means, covars, colors)):
+
+                v, w = linalg.eigh(covar)
+                u = w[0] / linalg.norm(w[0])
+                angle = np.arctan(u[1] / u[0])
+                angle = 180 * angle / np.pi  # convert to degrees
+                width, height = factor * np.sqrt(v)
+
+                ell = Ellipse(xy=mean, width=width, height=height,
+                              angle=angle)
+                ell.set_alpha(0.25)
+                if colors is not None:
+                    ell.set_color(next(colors))
+                ax.add_artist(ell)
+
+        return ax
+
+    def plot_bics(self, dataset_name=None, ax=None):
+        """ Plot bic (bayesian information criterion) for each 
+            covariance_type/number of GMM compenents of the specified dataset
+
+        """
+        # Auto set data the dataset_name to the first inserted dataset
+        dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
+
+        # generate gmm if not already done
+        if self.gmms[dataset_name] is None:
+            self.gen_gmm(dataset_name)
+
+        bic = np.array(self.bics[dataset_name])
+        color_iter = itertools.cycle(['r', 'g', 'b', 'c', 'm'])
+        bars = []
+
+        # Plot the BIC scores
+        if ax is None:
+            spl = plt.subplot(2, 1, 1)
+        else:
+            spl = ax.subplot(2, 1, 1)
+
+        for i, (cv_type, color) in enumerate(zip(self.cv_types, color_iter)):
+            xpos = np.array(self.n_components_range) + .2 * (i - 2)
+            bars.append(plt.bar(xpos, bic[i * len(self.n_components_range):
+                                          (i + 1) * len(self.n_components_range)],
+                                width=.2, color=color))
+        plt.xticks(self.n_components_range)
+        plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
+        plt.title('BIC score per model')
+        xpos = np.mod(bic.argmin(), len(self.n_components_range)) + .65 +\
+            .2 * np.floor(bic.argmin() / len(self.n_components_range))
+        plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
+        spl.set_xlabel('Number of components')
+        spl.legend([b[0] for b in bars], self.cv_types)
+        return ax
+
+
+###############################################################################
+# Used only for backup
+
+
+class SanitizeRecordsForGmm(object):
 
     """ Merge records data for gmm   """
 
@@ -140,7 +293,7 @@ class Sanitize_records_for_gmm(object):
                 if gmm_type == 'sklearn':
                     gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
                 else:
-                    gmm = Custom_gmm(n_components=n_components, covariance_type=cv_type)
+                    gmm = LbdGMM(n_components=n_components, covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
@@ -207,6 +360,9 @@ class Sanitize_records_for_gmm(object):
                 if colors is not None:
                     ell.set_color(next(colors))
                 ax.add_artist(ell)
+
+    def pdfs(self):
+        pass
 
     def plot_gmm(self, ax=None):
         if not self.__gmm_generated:
