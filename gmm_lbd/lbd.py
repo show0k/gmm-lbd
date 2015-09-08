@@ -61,8 +61,8 @@ class GmmManager(object):
             return the name of the dataset in the dictionnary of datasets
         """
         name = str(len(self.datasets)) if name is None else name
-        if name in self.datasets.keys():
-            self.datasets[name] = np.concatenate(self.datasets[name], data)
+        if name in self.datasets.keys() and not np.array_equal(self.datasets[name], data):
+            self.datasets[name] = np.concatenate((self.datasets[name], data))
         else:
             self.datasets[name] = data
         self.gmms[name] = None
@@ -169,6 +169,7 @@ class GmmManager(object):
 
         # Plot the BIC scores
         if ax is None:
+            plt.figure(figsize=(15, 5))
             spl = plt.subplot(2, 1, 1)
         else:
             spl = ax.subplot(2, 1, 1)
@@ -180,7 +181,7 @@ class GmmManager(object):
                                 width=.2, color=color))
         plt.xticks(self.n_components_range)
         plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
-        plt.title('BIC score per model')
+        plt.title('BIC score per model for {}'.format(dataset_name))
         xpos = np.mod(bic.argmin(), len(self.n_components_range)) + .65 +\
             .2 * np.floor(bic.argmin() / len(self.n_components_range))
         plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
