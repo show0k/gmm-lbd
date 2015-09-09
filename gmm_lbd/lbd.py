@@ -204,11 +204,16 @@ class GmmManager(object):
     def plot_ellipses_and_samples(self, dataset_name=None, ax=None, colors=['r', 'g', 'b']):
         # Auto set data the dataset_name to the first inserted dataset
         dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
-
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = plt.gca()
+        plt.title('GMM of {}'.format(dataset_name))
+        ax.set_ylabel('positions of {}'.format(dataset_name))
+        
         # generate gmm if not already done
         if self.gmms[dataset_name] is None:
             self.gen_gmm(dataset_name)
-        return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], colors=colors)
+        return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], ax=ax, colors=colors)
 
 
 
