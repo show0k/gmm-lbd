@@ -42,6 +42,72 @@ class LbdGMM(mixture.GMM):
         return (-2 * self.score(X).sum() +
                 self._n_parameters() * 3 * np.log(X.shape[0]))
 
+    def to_ellipses(self, factor=1.0):
+        """Compute error ellipses.
+
+        An error ellipse shows equiprobable points.
+
+        Parameters
+        ----------
+        factor : float
+            One means standard deviation.
+
+        Returns
+        -------
+        ellipses : array, shape (n_components, 4)
+            Parameters that describe the error ellipses of all components:
+            mean, widths, heights and angle.
+        """
+
+        ell_datas = []
+        for (mean, covar) in zip(self.means_, self._get_covars()):
+            v, w = linalg.eigh(covar)
+            u = w[0] / linalg.norm(w[0])
+            angle = np.arctan(u[1] / u[0])
+            width, height = factor * np.sqrt(v)
+            ell_datas.append((mean, width, height, angle))
+        return ell_datas
+
+    def plot_error_ellipse(self, X, ax=None, colors=['r', 'g', 'b','c','m'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
+        """Plot error ellipses of GMM.
+
+        Parameters
+        ----------
+        ax : axis
+            Matplotlib axis.
+
+        colors : list
+            list of colors
+
+        ellipses_shapes : vector
+            vector of ellipses factors shapes
+        """
+        from matplotlib.patches import Ellipse
+        from itertools import cycle
+
+        Y = self.predict(X)
+
+        if colors is not None:
+            colors = cycle(colors)
+
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = fig.add_subplot(111)
+
+        for factor in ellipses_shapes:
+            for i, (mean, width, height, angle) in enumerate(self.to_ellipses(factor)):
+                if not np.any(Y == i):
+                    continue
+                color = next(colors) if colors is not None else 'r'
+
+                plt.scatter(X[Y == i, 0], X[Y == i, 1], .8, color=color)
+                ell = Ellipse(xy=mean, width=width, height=height,
+                              angle=np.degrees(angle))
+                ell.set_alpha(0.25)
+                ell.set_color(color)
+                ax.add_artist(ell)
+        return ax
+
 
 class GmmManager(object):
 
