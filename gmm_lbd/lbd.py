@@ -3,21 +3,63 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from collections import OrderedDict
+from itertools import cycle
+import itertools
 
 import numpy as np
-import itertools
-from itertools import cycle
-
-
-from scipy import linalg
+import scipy as sp
 import matplotlib as mpl
 
+from scipy import linalg
+from scipy.stats import multivariate_normal as mvn
 from sklearn import mixture
+
 import json
 
 
+def invert_indices(n_features, indices):
+    inv = np.ones(n_features, dtype=np.bool)
+    inv[indices] = False
+    inv, = np.where(inv)
+    return inv
+
+
+def gauss_pdf(X, mean, cov):
+    """Compute probability density.
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Data.
+
+    mean : mean
+
+    cov : covariance
+
+    Returns
+    -------
+    p : array, shape (n_samples,)
+        Probability densities of data.
+    """
+
+    X = np.atleast_2d(X)
+    n_features = X.shape[1]
+
+    C = cov.copy()
+    try:
+        L = sp.linalg.cholesky(C, lower=True)
+    except np.linalg.LinAlgError:
+        C = cov + 1e-3 * np.eye(n_features)
+        L = sp.linalg.cholesky(C, lower=True)
+    D = X - mean
+    cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
+    norm = 0.5 / np.pi ** (0.5 * n_features) / sp.linalg.det(L)
+
+    DpD = np.sum(cov_sol ** 2, axis=1)
+    return norm * np.exp(-0.5 * DpD)
+
 class LbdGMM(mixture.GMM):
-    """ Override the default sklearn GMM mixture to add some other tools"""
+    """ Override the default sklearn GMM mixture to add some regresssion features"""
 
     def __init__(self, n_components=1, covariance_type='diag',
                  random_state=None, thresh=None, tol=1e-3, min_covar=1e-3,
@@ -69,7 +111,7 @@ class LbdGMM(mixture.GMM):
             ell_datas.append((mean, width, height, angle))
         return ell_datas
 
-    def plot_ellipses(self, X, ax=None, colors=['r', 'g', 'b','c','m'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
+    def plot_ellipses(self, X, ax=None, colors=['r', 'g', 'b', 'c', 'm'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
         """Plot error ellipses of GMM.
 
         Parameters
@@ -113,6 +155,83 @@ class LbdGMM(mixture.GMM):
                 ax.add_artist(ell)
         return ax
 
+    def conditional_distribution(self, indices, x):
+        """ Conditional gaussian distribution
+            See
+            https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions
+
+            Return
+            ------
+            conditional : GMM
+                Conditional GMM distribution p(Y | X=x)
+        """
+        # Compute conditional gaussian ditsribution
+        expected_means = np.empty_like(self.means_)
+        expected_covars = np.empty_like(self._get_covars())
+        expected_weights = np.empty_like(self.weights_)
+
+        # Highly inspired from https://github.com/AlexanderFabisch/gmr
+        # Compute expexted_means, expexted_covars, given input X
+        for i, (mean, covar, weight) in enumerate(zip(self.means_, self._get_covars(), self.weights_)):
+            i1, i2 = invert_indices(mean.shape[0], indices), indices
+            cov_12 = covar[np.ix_(i1, i2)]
+            cov_11 = covar[np.ix_(i1, i1)]
+            cov_22 = covar[np.ix_(i2, i2)]
+            prec_22 = linalg.pinvh(cov_22)
+            regression_coeffs = cov_12.dot(prec_22)
+            if x.ndim == 1:
+                x = x[:, np.newaxis]
+            expected_means[i] = mean[i1] + regression_coeffs.dot((x - mean[i2]).T).T
+            expected_covars[i] = cov_11 - regression_coeffs.dot(cov_12.T)
+            expected_weights[i] = weight * gauss_pdf(x, mean=mean[indices], cov=covar[indices])
+            try:
+                expected_weights[i] = weight * mvn.pdf(x, mean=mean[indices], cov=covar[indices])
+            except:
+                print i, x, expected_means[i], expected_covars[i]
+
+        return expected_means, expected_covars, expected_weights
+
+    def regression(self, indices, X):
+        """Predict expected means and expected covariances
+
+        Parameters
+        ----------
+        indices : array, shape (n_features_1,)
+            Indices of dimensions that we want to condition.
+
+        X : array, shape (n_samples, n_features_1)
+            Values of the features that we know.
+
+        Returns
+        -------
+        Y : array, shape (n_samples, n_features_2)
+            Predicted means of missing values.
+        """
+
+        n_samples, n_features_1 = X.shape
+        n_features_2 = self.means_.shape[1] - n_features_1
+        Y = np.empty((n_samples, n_features_2))
+        for n in range(n_samples):
+            expected_means, expected_covars, expected_weights = self.conditional_distribution(indices, X[n])
+            Y[n] = expected_weights.dot(expected_means)
+        return Y
+
+    def pdf(self, X):
+        """Compute probability density.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            Data.
+
+        Returns
+        -------
+        p : array, shape (n_samples,)
+            Probability densities of data.
+        """
+        p = [mvn.pdf(X, mean=mean, cov=covar) for (mean, covar) in zip(self.means_, self._get_covars())]
+        return np.dot(self.weights_, p)
+
 
 class GmmManager(object):
     """ Provide an easy way to use GMMs, load and plot datasets"""
@@ -123,7 +242,8 @@ class GmmManager(object):
         self.bics = OrderedDict()
         self.criteria = criteria
         # For BIC optimisation
-        self.cv_types = cv_types  # ['full']#['spherical', 'tied', 'diag', 'full']
+        # ['full']#['spherical', 'tied', 'diag', 'full']
+        self.cv_types = cv_types
         self.n_components_range = n_components_range
 
     def add_dataset(self, data, name=None):
@@ -146,12 +266,13 @@ class GmmManager(object):
         self.gmms[name] = None
         return name
 
-    def add_move(self,filename):
+    def add_move(self, filename, suffix=''):
         """ Import a pypot MoveRecord file as a dict of array of shape(n_samples, n_dimensions)
 
             Parameters
             ----------
-            filename : path if a record file (specific to pypot)
+            filename : filename if a record file (specific to pypot)
+            suffix : suffix added to the motor name
 
         """
         with open(filename, 'r') as move:
@@ -162,12 +283,13 @@ class GmmManager(object):
                 dic = timed_positions[timestamp]
                 for motor, values in dic.items():
                     try:
-                        X[motor] = np.vstack((X[motor], np.array([[i, float(values[0])]])))
+                        X[motor] = np.vstack(
+                            (X[motor], np.array([[i, float(values[0])]])))
                     except KeyError:
                         X[motor] = np.array([[i, float(values[0])]])
 
-            for k, v in X.items():
-                self.add_dataset(v, name=k)
+        for k, v in X.items():
+            self.add_dataset(v, name=k+suffix)
 
     def gen_gmm(self, dataset_name, cv_types=None, n_components_range=None, criteria=None):
         """ Generate a gmm to the current dataset optimizing de bic criteria
@@ -192,9 +314,11 @@ class GmmManager(object):
         lowest_bic = np.infty
         for cv_type in self.cv_types:
             for n_components in n_components_range:
-                gmm = LbdGMM(n_components=n_components, covariance_type=cv_type)
+                gmm = LbdGMM(n_components=n_components,
+                             covariance_type=cv_type)
                 gmm.fit(X)
-                self.bics[dataset_name].append(gmm.aic(X) if criteria == 'aic' else gmm.bic(X))
+                self.bics[dataset_name].append(
+                    gmm.aic(X) if criteria == 'aic' else gmm.bic(X))
                 if self.bics[dataset_name][-1] < lowest_bic:
                     lowest_bic = self.bics[dataset_name][-1]
                     best_gmm = gmm
@@ -209,12 +333,11 @@ class GmmManager(object):
             ax = plt.gca()
         plt.title('GMM of {}'.format(dataset_name))
         ax.set_ylabel('positions of {}'.format(dataset_name))
-        
+
         # generate gmm if not already done
         if self.gmms[dataset_name] is None:
             self.gen_gmm(dataset_name)
         return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], ax=ax, colors=colors)
-
 
 
     # TO BE REMOVED
@@ -250,7 +373,8 @@ class GmmManager(object):
             covariance_type/number of GMM compenents of the specified dataset
         """
         # Auto set data the dataset_name to the first inserted dataset
-        dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
+        dataset_name = self.datasets.keys(
+        )[0] if dataset_name is None else dataset_name
 
         # generate gmm if not already done
         if self.gmms[dataset_name] is None:
@@ -274,7 +398,8 @@ class GmmManager(object):
                                 width=.2, color=color))
         plt.xticks(self.n_components_range)
         plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
-        plt.title('{} score per model for {}'.format(self.criteria.upper(), dataset_name))
+        plt.title('{} score per model for {}'.format(
+            self.criteria.upper(), dataset_name))
         xpos = np.mod(bic.argmin(), len(self.n_components_range)) + .65 +\
             .2 * np.floor(bic.argmin() / len(self.n_components_range))
         plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
@@ -302,7 +427,8 @@ class SanitizeRecordsForGmm(object):
         self.__gmm_generated = False
         self.bics = []
         # For BIC optimisation
-        self.cv_types = cv_types  # ['full']#['spherical', 'tied', 'diag', 'full']
+        # ['full']#['spherical', 'tied', 'diag', 'full']
+        self.cv_types = cv_types
         self.n_components_range = n_components_range
 
     def add_record(self, times, positions, speeds=None):
@@ -385,9 +511,11 @@ class SanitizeRecordsForGmm(object):
             for n_components in self.n_components_range:
                 # Fit a mixture of Gaussians with EM
                 if gmm_type == 'sklearn':
-                    gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+                    gmm = mixture.GMM(n_components=n_components,
+                                      covariance_type=cv_type)
                 else:
-                    gmm = LbdGMM(n_components=n_components, covariance_type=cv_type)
+                    gmm = LbdGMM(n_components=n_components,
+                                 covariance_type=cv_type)
                 gmm.fit(X)
                 self.bics.append(gmm.bic(X))
                 if self.bics[-1] < lowest_bic:
@@ -441,7 +569,8 @@ class SanitizeRecordsForGmm(object):
 
                 if not np.any(Y_ == i):
                     continue
-                plt.scatter(self._X[Y_ == i, 0], self._X[Y_ == i, 1], .8, color=color)
+                plt.scatter(self._X[Y_ == i, 0], self._X[
+                            Y_ == i, 1], .8, color=color)
                 v, w = linalg.eigh(covar)
                 u = w[0] / linalg.norm(w[0])
                 angle = np.arctan(u[1] / u[0])
@@ -478,12 +607,14 @@ class SanitizeRecordsForGmm(object):
             # components.
             if not np.any(Y_ == i):
                 continue
-            ax.scatter(self._X[Y_ == i, 0], self._X[Y_ == i, 1], .8, color=color)
+            ax.scatter(self._X[Y_ == i, 0], self._X[
+                       Y_ == i, 1], .8, color=color)
 
             # Plot an ellipse to show the Gaussian component
             angle = np.arctan(u[1] / u[0])
             angle = 180 * angle / np.pi  # convert to degrees
-            ell = mpl.patches.Ellipse(mean, v[0], v[1], 180 + angle, color=color)
+            ell = mpl.patches.Ellipse(
+                mean, v[0], v[1], 180 + angle, color=color)
             ell.set_clip_box(ax.bbox)
             ell.set_alpha(0.5)
             ax.add_artist(ell)
