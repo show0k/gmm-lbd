@@ -7,12 +7,15 @@ from itertools import cycle
 import itertools
 
 import numpy as np
-import scipy as sp
 import matplotlib as mpl
 
+import scipy as sp
 from scipy import linalg
-from scipy.stats import multivariate_normal as mvn
+from scipy.stats import multivariate_normal
+
 from sklearn import mixture
+from sklearn.utils.extmath import pinvh
+
 
 import json
 
@@ -24,41 +27,8 @@ def invert_indices(n_features, indices):
     return inv
 
 
-def gauss_pdf(X, mean, cov):
-    """Compute probability density.
-
-    Parameters
-    ----------
-    X : array-like, shape (n_samples, n_features)
-        Data.
-
-    mean : mean
-
-    cov : covariance
-
-    Returns
-    -------
-    p : array, shape (n_samples,)
-        Probability densities of data.
-    """
-
-    X = np.atleast_2d(X)
-    n_features = X.shape[1]
-
-    C = cov.copy()
-    try:
-        L = sp.linalg.cholesky(C, lower=True)
-    except np.linalg.LinAlgError:
-        C = cov + 1e-3 * np.eye(n_features)
-        L = sp.linalg.cholesky(C, lower=True)
-    D = X - mean
-    cov_sol = sp.linalg.solve_triangular(L, D.T, lower=True).T
-    norm = 0.5 / np.pi ** (0.5 * n_features) / sp.linalg.det(L)
-
-    DpD = np.sum(cov_sol ** 2, axis=1)
-    return norm * np.exp(-0.5 * DpD)
-
 class LbdGMM(mixture.GMM):
+
     """ Override the default sklearn GMM mixture to add some regresssion features"""
 
     def __init__(self, n_components=1, covariance_type='diag',
@@ -128,9 +98,6 @@ class LbdGMM(mixture.GMM):
         ellipses_shapes : vector
             vector of ellipses factors shapes
         """
-        from matplotlib.patches import Ellipse
-        from itertools import cycle
-
         Y = self.predict(X) if X is not None else None
 
         if colors is not None:
@@ -165,34 +132,36 @@ class LbdGMM(mixture.GMM):
             conditional : GMM
                 Conditional GMM distribution p(Y | X=x)
         """
-        # Compute conditional gaussian ditsribution
-        expected_means = np.empty_like(self.means_)
-        expected_covars = np.empty_like(self._get_covars())
-        expected_weights = np.empty_like(self.weights_)
+        n_features = self.means_.shape[1] - len(indices)
+        expected_means = np.empty((self.n_components, n_features))
+        expected_covars = np.empty((self.n_components, n_features, n_features))
+        expected_weights = np.empty(self.n_components)
 
         # Highly inspired from https://github.com/AlexanderFabisch/gmr
         # Compute expexted_means, expexted_covars, given input X
-        for i, (mean, covar, weight) in enumerate(zip(self.means_, self._get_covars(), self.weights_)):
+        for i, (mean, covar, weight) in enumerate(zip(self.means_, self.covars_, self.weights_)):
+
             i1, i2 = invert_indices(mean.shape[0], indices), indices
             cov_12 = covar[np.ix_(i1, i2)]
             cov_11 = covar[np.ix_(i1, i1)]
             cov_22 = covar[np.ix_(i2, i2)]
-            prec_22 = linalg.pinvh(cov_22)
+            prec_22 = pinvh(cov_22)
             regression_coeffs = cov_12.dot(prec_22)
+
             if x.ndim == 1:
                 x = x[:, np.newaxis]
+
             expected_means[i] = mean[i1] + regression_coeffs.dot((x - mean[i2]).T).T
             expected_covars[i] = cov_11 - regression_coeffs.dot(cov_12.T)
-            expected_weights[i] = weight * gauss_pdf(x, mean=mean[indices], cov=covar[indices])
-            try:
-                expected_weights[i] = weight * mvn.pdf(x, mean=mean[indices], cov=covar[indices])
-            except:
-                print i, x, expected_means[i], expected_covars[i]
+            expected_weights[i] = weight * \
+                multivariate_normal.pdf(x, mean=mean[indices], cov=covar[np.ix_(indices, indices)])
+
+        expected_weights /= expected_weights.sum()
 
         return expected_means, expected_covars, expected_weights
 
     def regression(self, indices, X):
-        """Predict expected means and expected covariances
+        """Predict approximed means and covariances 
 
         Parameters
         ----------
@@ -210,11 +179,14 @@ class LbdGMM(mixture.GMM):
 
         n_samples, n_features_1 = X.shape
         n_features_2 = self.means_.shape[1] - n_features_1
-        Y = np.empty((n_samples, n_features_2))
-        for n in range(n_samples):
-            expected_means, expected_covars, expected_weights = self.conditional_distribution(indices, X[n])
-            Y[n] = expected_weights.dot(expected_means)
-        return Y
+        approximed_means = np.empty((n_samples, n_features_2))
+        approximed_covars = np.empty((n_samples, n_features_2, n_features_2))
+
+        for i in range(n_samples):
+            expected_means, expected_covars, expected_weights = self.conditional_distribution(indices, X[i])
+            approximed_means[i] = expected_weights.dot(expected_means)
+            approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars)
+        return approximed_means, approximed_covars
 
     def pdf(self, X):
         """Compute probability density.
@@ -229,11 +201,12 @@ class LbdGMM(mixture.GMM):
         p : array, shape (n_samples,)
             Probability densities of data.
         """
-        p = [mvn.pdf(X, mean=mean, cov=covar) for (mean, covar) in zip(self.means_, self._get_covars())]
+        p = [multivariate_normal.pdf(X, mean=mean, cov=covar) for (mean, covar) in zip(self.means_, self._get_covars())]
         return np.dot(self.weights_, p)
 
 
 class GmmManager(object):
+
     """ Provide an easy way to use GMMs, load and plot datasets"""
 
     def __init__(self, cv_types=['full'], n_components_range=range(1, 30), criteria='aic'):
@@ -289,7 +262,7 @@ class GmmManager(object):
                         X[motor] = np.array([[i, float(values[0])]])
 
         for k, v in X.items():
-            self.add_dataset(v, name=k+suffix)
+            self.add_dataset(v, name=k + suffix)
 
     def gen_gmm(self, dataset_name, cv_types=None, n_components_range=None, criteria=None):
         """ Generate a gmm to the current dataset optimizing de bic criteria
@@ -338,7 +311,6 @@ class GmmManager(object):
         if self.gmms[dataset_name] is None:
             self.gen_gmm(dataset_name)
         return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], ax=ax, colors=colors)
-
 
     # TO BE REMOVED
     def plot_ellipses(self, means, covars,  xlim=(0, 10), ylim=(0, 10), ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 4.0, 5)):
