@@ -26,6 +26,75 @@ def invert_indices(n_features, indices):
     return inv
 
 
+def plot_2D_mean_covars(X, means_covars, ax=None, color='b', size=0.3):
+    """Regression datas (mean an covariance) of a GMM
+
+    Parameters
+    ----------
+    X : data array of shape (n_samples, )
+
+    means_covars : tuple of means and covariance
+                    means data array of shape (n_samples, n_dimensions)
+                    covars data array of shape (n_samples, n_dimensions, n_dimensions)
+
+    ax : axis
+        Matplotlib axis.
+
+    color : string color af graph
+
+    size : float between 0 and 1 related to alpha of fill_between and scalar of scatter
+    """
+    means = means_covars[0]
+    covars = means_covars[1]
+
+    scalar = 5 * size
+    alpha = 0.8 * size
+
+    if ax is None:
+        fig = plt.figure(figsize=(15, 5))
+        ax = fig.add_subplot(111)
+
+    try:
+        X.shape[1]
+    except IndexError:
+        X = X[:, np.newaxis]
+    # means, covars = self.regression(X)
+    ymax = np.empty(means.shape[0])
+    ymin = np.empty(means.shape[0])
+
+    ax.scatter(X[:, 0], means, scalar, color=color)
+    for n in range(means.shape[0]):
+        ymax[n] = means[n] + np.sqrt(covars[n][0])
+        ymin[n] = means[n] - np.sqrt(covars[n][0])
+
+    ax.fill_between(X[:, 0], ymin, ymax, alpha=alpha, color=color)
+
+def gmm_product(X, gmm1, gmm2):
+    """Predict a generalized trajectory from two independant constraints.
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Data.
+
+
+    """
+    means1, covars1 = gmm1.regression(X)
+    means2, covars2 = gmm2.regression(X)
+
+    generalized_mean = np.empty_like(means1)
+    generalized_covar = np.empty_like(covars1)
+    for i, (mean1, covar1, mean2, covar2) in enumerate(zip(means1, covars1, means2, covars2)):
+        generalized_mean[i] = pinvh(pinvh(covar1) + pinvh(covar2)).dot(
+            pinvh(covar1).dot(mean1) + pinvh(covar2).dot(mean2))
+        generalized_covar[i] = pinvh(pinvh(covar1) + pinvh(covar2))
+
+    return generalized_mean, generalized_covar
+
+
+def seq_move():
+    pass
+
 class LbdGMM(mixture.GMM):
 
     """ Override the default sklearn GMM mixture to add some regresssion features"""
@@ -154,27 +223,6 @@ class LbdGMM(mixture.GMM):
             approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars.T[0].T)
         return approximed_means, approximed_covars
 
-    def product(self, gmm2, X):
-        """Predict a generalized trajectory from two independant constraints.
-
-        Parameters
-        ----------
-        X : array-like, shape (n_samples, n_features)
-            Data.
-
-
-        """
-        means1, covars1 = self.regression(X)
-        means2, covars2 = gmm2.regression(X)
-
-        generalized_mean = np.empty_like(means1)
-        generalized_covar = np.empty_like(covars1)
-        for i, (mean1, covar1, mean2, covar2) in enumerate(zip(means1, covars1, means2, covars2)):
-            generalized_mean[i] = pinvh(pinvh(covar1) + pinvh(covar2)).dot(
-                pinvh(covar1).dot(mean1) + pinvh(covar2).dot(mean2))
-            generalized_covar[i] = pinvh(pinvh(covar1) + pinvh(covar2))
-
-        return generalized_mean, generalized_covar
 
     def pdf(self, X):
         """Compute probability density.
@@ -232,37 +280,6 @@ class LbdGMM(mixture.GMM):
                 ell.set_color(color)
                 ax.add_artist(ell)
         return ax
-
-    def plot_regression(self, mean, covar, ax=None, color='b'):
-        """Regression datas (mean an covariance) of a GMM
-
-        Parameters
-        ----------
-        mean : data array of shape (n_samples, n_dimensions)
-
-        ax : axis
-            Matplotlib axis.
-
-        """
-
-        if ax is None:
-            fig = plt.figure(figsize=(15, 5))
-            ax = fig.add_subplot(111)
-
-        try:
-            X.shape[1]
-        except IndexError:
-            X = X[:, np.newaxis]
-        means, covars = self.regression(X)
-        ymax = np.empty(means.shape[0])
-        ymin = np.empty(means.shape[0])
-
-        ax.scatter(X[:, 0], means, .8)
-        for n in range(means.shape[0]):
-            ymax[n] = means[n] + np.sqrt(covars[n][0])
-            ymin[n] = means[n] - np.sqrt(covars[n][0])
-
-        ax.fill_between(X[:, 0], ymin, ymax, alpha=0.3)
 
 
 class GmmManager(object):
@@ -374,11 +391,11 @@ class GmmManager(object):
 
     def plot_regression(self, dataset_name=None, ax=None):
         dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
-        datas = self.datasets[dataset_name]
-
-        return self.gmms[dataset_name].plot_regression(
-                                        X=np.linspace(min(datas), max(datas), 1000),
-                                        ax=ax)
+        X = np.linspace(min(self.datasets[dataset_name][:, 0]),
+                        max(self.datasets[dataset_name][:, 0]),
+                        100)
+        gmm = self.gmms[dataset_name]
+        return plot_2D_mean_covars(X, gmm.regression(X), ax=ax)
 
     # TO BE REMOVED
     def plot_ellipses(self, means, covars,  xlim=(0, 10), ylim=(0, 10), ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 4.0, 5)):
