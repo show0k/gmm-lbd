@@ -1,12 +1,15 @@
 
-[X] améliorer l'overfititing
-[X] ajouter en parrametre aic OU bic
-[X] ajouter des mouvements sur plusieurs moteurs
-[ ] 
+# Roadmap
+* [X] améliorer l'overfititing
+* [x] probabilité conditionelle
+* [x] regression
+* [ ] produit
 
-[ ] Aligner les enregistrements avec du DTW  
-
-[ ] Sequential : concatenation of the GMM
+### High level
+* [X] ajouter des mouvements sur plusieurs moteurs
+* [ ] Aligner les enregistrements avec du DTW  
+* [ ] Sequential : concatenation of the GMM
+* [ ] Parralelisation
 
 
 ## GMM Calinon
