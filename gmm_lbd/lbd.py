@@ -80,75 +80,6 @@ class LbdGMM(mixture.GMM):
             ell_datas.append((mean, width, height, angle))
         return ell_datas
 
-    def plot_ellipses(self, X, ax=None, colors=['r', 'g', 'b', 'c', 'm'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
-        """Plot error ellipses of GMM.
-
-        Parameters
-        ----------
-        X : array of shape (n_samples, n_dimensions)
-            MUST be 2 dimensions or None (TODO: generalize to many dimensions)
-
-        ax : axis
-            Matplotlib axis.
-
-        colors : list
-            list of colors
-
-        ellipses_shapes : vector
-            vector of ellipses factors shapes
-        """
-        Y = self.predict(X) if X is not None else None
-
-        if colors is not None:
-            colors = cycle(colors)
-
-        if ax is None:
-            fig = plt.figure(figsize=(15, 5))
-            ax = fig.add_subplot(111)
-
-        for factor in ellipses_shapes:
-            for i, (mean, width, height, angle) in enumerate(self.to_ellipses(factor)):
-                if X is not None:
-                    if not np.any(Y == i):
-                        continue
-                color = next(colors) if colors is not None else 'r'
-                if X is not None:
-                    plt.scatter(X[Y == i, 0], X[Y == i, 1], .8, color=color)
-                ell = Ellipse(xy=mean, width=width, height=height,
-                              angle=np.degrees(angle))
-                ell.set_alpha(0.25)
-                ell.set_color(color)
-                ax.add_artist(ell)
-        return ax
-
-    def plot_regression(self, X, ax=None):
-        """Regression datas (mean an covariance) of a GMM
-
-        Parameters
-        ----------
-        X : data array of shape (n_samples, n_dimensions)
-
-        ax : axis
-            Matplotlib axis.
-
-        """
-
-        if ax is None:
-            fig = plt.figure(figsize=(15, 5))
-            ax = plt.subplot(111)
-
-        exp_datas = np.linspace(min(X[:, 0]), max(X[:, 0]), 1000)
-        means, covars = self.regression(exp_datas[:, np.newaxis])
-        ymax = np.empty(means.shape[0])
-        ymin = np.empty(means.shape[0])
-
-        ax.scatter(exp_datas, means)
-        for n in range(means.shape[0]):
-            ymax[n] = means[n] + np.sqrt(covars[n][0])
-            ymin[n] = means[n] - np.sqrt(covars[n][0])
-
-        ax.fill_between(exp_datas, ymin, ymax, alpha=0.3)
-
     def conditional_distribution(self, x, indices=np.array([0])):
         """ Conditional gaussian distribution
             See
@@ -207,8 +138,12 @@ class LbdGMM(mixture.GMM):
             Predicted covariances of missing values.
 
         """
+        try:
+            n_samples, n_features_1 = X.shape
+        except ValueError:
+            X = X[:, np.newaxis]
+            n_samples, n_features_1 = X.shape
 
-        n_samples, n_features_1 = X.shape
         n_features_2 = self.means_.shape[1] - n_features_1
         approximed_means = np.empty((n_samples, n_features_2))
         approximed_covars = np.empty((n_samples, n_features_2, n_features_2))
@@ -219,14 +154,27 @@ class LbdGMM(mixture.GMM):
             approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars.T[0].T)
         return approximed_means, approximed_covars
 
-    def product(self, gmm):
+    def product(self, gmm2, X):
         """Predict a generalized trajectory from two independant constraints.
 
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            Data.
+
+
         """
-        generalized_mean = np.empty_like(self.means_)
-        generalized_covar = np.empty_like(self._get_covars())
-        for i, (mean1, covar1, mean2, covar2) in enumerate(zip(self.means_, self.covars_, gmm.means_, gmm._get_covars())):
-            generalized_mean[i] = pinvh(pinvh(covar1) + pinvh(covar2))
+        means1, covars1 = self.regression(X)
+        means2, covars2 = gmm2.regression(X)
+
+        generalized_mean = np.empty_like(means1)
+        generalized_covar = np.empty_like(covars1)
+        for i, (mean1, covar1, mean2, covar2) in enumerate(zip(means1, covars1, means2, covars2)):
+            generalized_mean[i] = pinvh(pinvh(covar1) + pinvh(covar2)).dot(
+                pinvh(covar1).dot(mean1) + pinvh(covar2).dot(mean2))
+            generalized_covar[i] = pinvh(pinvh(covar1) + pinvh(covar2))
+
+        return generalized_mean, generalized_covar
 
     def pdf(self, X):
         """Compute probability density.
@@ -243,6 +191,78 @@ class LbdGMM(mixture.GMM):
         """
         p = [multivariate_normal.pdf(X, mean=mean, cov=covar) for (mean, covar) in zip(self.means_, self._get_covars())]
         return np.dot(self.weights_, p)
+
+    def plot_ellipses(self, X, ax=None, colors=['r', 'g', 'b', 'c', 'm'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
+        """Plot error ellipses of GMM.
+
+        Parameters
+        ----------
+        X : array of shape (n_samples, n_dimensions)
+            MUST be 2 dimensions or None (TODO: generalize to many dimensions)
+
+        ax : axis
+            Matplotlib axis.
+
+        colors : list
+            list of colors
+
+        ellipses_shapes : vector
+            vector of ellipses factors shapes
+        """
+        Y = self.predict(X) if X is not None else None
+
+        if colors is not None:
+            colors = cycle(colors)
+
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = fig.add_subplot(111)
+
+        for factor in ellipses_shapes:
+            for i, (mean, width, height, angle) in enumerate(self.to_ellipses(factor)):
+                if X is not None:
+                    if not np.any(Y == i):
+                        continue
+                color = next(colors) if colors is not None else 'r'
+                if X is not None:
+                    plt.scatter(X[Y == i, 0], X[Y == i, 1], .8, color=color)
+                ell = Ellipse(xy=mean, width=width, height=height,
+                              angle=np.degrees(angle))
+                ell.set_alpha(0.25)
+                ell.set_color(color)
+                ax.add_artist(ell)
+        return ax
+
+    def plot_regression(self, mean, covar, ax=None, color='b'):
+        """Regression datas (mean an covariance) of a GMM
+
+        Parameters
+        ----------
+        mean : data array of shape (n_samples, n_dimensions)
+
+        ax : axis
+            Matplotlib axis.
+
+        """
+
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = fig.add_subplot(111)
+
+        try:
+            X.shape[1]
+        except IndexError:
+            X = X[:, np.newaxis]
+        means, covars = self.regression(X)
+        ymax = np.empty(means.shape[0])
+        ymin = np.empty(means.shape[0])
+
+        ax.scatter(X[:, 0], means, .8)
+        for n in range(means.shape[0]):
+            ymax[n] = means[n] + np.sqrt(covars[n][0])
+            ymin[n] = means[n] - np.sqrt(covars[n][0])
+
+        ax.fill_between(X[:, 0], ymin, ymax, alpha=0.3)
 
 
 class GmmManager(object):
@@ -352,8 +372,13 @@ class GmmManager(object):
             self.gen_gmm(dataset_name)
         return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], ax=ax, colors=colors)
 
-    def plot_regression(self, dataset_name, ax=None):
-        return self.gmms[dataset_name].plot_regression(self.datasets[dataset_name], ax=ax)
+    def plot_regression(self, dataset_name=None, ax=None):
+        dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
+        datas = self.datasets[dataset_name]
+
+        return self.gmms[dataset_name].plot_regression(
+                                        X=np.linspace(min(datas), max(datas), 1000),
+                                        ax=ax)
 
     # TO BE REMOVED
     def plot_ellipses(self, means, covars,  xlim=(0, 10), ylim=(0, 10), ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 4.0, 5)):
