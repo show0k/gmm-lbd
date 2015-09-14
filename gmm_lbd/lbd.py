@@ -9,7 +9,6 @@ import itertools
 import numpy as np
 import matplotlib as mpl
 
-import scipy as sp
 from scipy import linalg
 from scipy.stats import multivariate_normal
 
@@ -31,7 +30,7 @@ class LbdGMM(mixture.GMM):
 
     """ Override the default sklearn GMM mixture to add some regresssion features"""
 
-    def __init__(self, n_components=1, covariance_type='diag',
+    def __init__(self, n_components=1, covariance_type='full',
                  random_state=None, thresh=None, tol=1e-3, min_covar=1e-3,
                  n_iter=100, n_init=1, params='wmc', init_params='wmc',
                  verbose=0):
@@ -122,7 +121,35 @@ class LbdGMM(mixture.GMM):
                 ax.add_artist(ell)
         return ax
 
-    def conditional_distribution(self, indices, x):
+    def plot_regression(self, X, ax=None):
+        """Regression datas (mean an covariance) of a GMM
+
+        Parameters
+        ----------
+        X : data array of shape (n_samples, n_dimensions)
+
+        ax : axis
+            Matplotlib axis.
+
+        """
+
+        if ax is None:
+            fig = plt.figure(figsize=(15, 5))
+            ax = plt.subplot(111)
+
+        exp_datas = np.linspace(min(X[:, 0]), max(X[:, 0]), 1000)
+        means, covars = self.regression(exp_datas[:, np.newaxis])
+        ymax = np.empty(means.shape[0])
+        ymin = np.empty(means.shape[0])
+
+        ax.scatter(exp_datas, means)
+        for n in range(means.shape[0]):
+            ymax[n] = means[n] + np.sqrt(covars[n][0])
+            ymin[n] = means[n] - np.sqrt(covars[n][0])
+
+        ax.fill_between(exp_datas, ymin, ymax, alpha=0.3)
+
+    def conditional_distribution(self, x, indices=np.array([0])):
         """ Conditional gaussian distribution
             See
             https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions
@@ -160,21 +187,25 @@ class LbdGMM(mixture.GMM):
 
         return expected_means, expected_covars, expected_weights
 
-    def regression(self, indices, X):
-        """Predict approximed means and covariances 
+    def regression(self, X, indices=np.array([0])):
+        """Predict approximed means and covariances
 
         Parameters
         ----------
-        indices : array, shape (n_features_1,)
-            Indices of dimensions that we want to condition.
-
         X : array, shape (n_samples, n_features_1)
             Values of the features that we know.
 
+        indices : array, shape (n_features_1,)
+            Indices of dimensions that we want to condition.
+
         Returns
         -------
-        Y : array, shape (n_samples, n_features_2)
+        approximed_means : array, shape (n_samples, n_features_2)
             Predicted means of missing values.
+
+        approximed_covars : array, shape (n_samples, n_features_2)
+            Predicted covariances of missing values.
+
         """
 
         n_samples, n_features_1 = X.shape
@@ -183,10 +214,19 @@ class LbdGMM(mixture.GMM):
         approximed_covars = np.empty((n_samples, n_features_2, n_features_2))
 
         for i in range(n_samples):
-            expected_means, expected_covars, expected_weights = self.conditional_distribution(indices, X[i])
+            expected_means, expected_covars, expected_weights = self.conditional_distribution(X[i], indices)
             approximed_means[i] = expected_weights.dot(expected_means)
-            approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars)
+            approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars.T[0].T)
         return approximed_means, approximed_covars
+
+    def product(self, gmm):
+        """Predict a generalized trajectory from two independant constraints.
+
+        """
+        generalized_mean = np.empty_like(self.means_)
+        generalized_covar = np.empty_like(self._get_covars())
+        for i, (mean1, covar1, mean2, covar2) in enumerate(zip(self.means_, self.covars_, gmm.means_, gmm._get_covars())):
+            generalized_mean[i] = pinvh(pinvh(covar1) + pinvh(covar2))
 
     def pdf(self, X):
         """Compute probability density.
@@ -215,7 +255,7 @@ class GmmManager(object):
         self.bics = OrderedDict()
         self.criteria = criteria
         # For BIC optimisation
-        # ['full']#['spherical', 'tied', 'diag', 'full']
+        # ['full']#['spherical', 'tied', 'diag', 'spherical']
         self.cv_types = cv_types
         self.n_components_range = n_components_range
 
@@ -298,7 +338,7 @@ class GmmManager(object):
         self.gmms[dataset_name] = best_gmm
         return best_gmm
 
-    def plot_ellipses_and_samples(self, dataset_name=None, ax=None, colors=['r', 'g', 'b']):
+    def plot_ellipses_and_samples(self, dataset_name=None, ax=None, colors=['r', 'g', 'b'], ):
         # Auto set data the dataset_name to the first inserted dataset
         dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
         if ax is None:
@@ -312,12 +352,15 @@ class GmmManager(object):
             self.gen_gmm(dataset_name)
         return self.gmms[dataset_name].plot_ellipses(self.datasets[dataset_name], ax=ax, colors=colors)
 
+    def plot_regression(self, dataset_name, ax=None):
+        return self.gmms[dataset_name].plot_regression(self.datasets[dataset_name], ax=ax)
+
     # TO BE REMOVED
     def plot_ellipses(self, means, covars,  xlim=(0, 10), ylim=(0, 10), ax=None, colors=['r', 'g', 'b'], elipses_shapes=np.linspace(0.8, 4.0, 5)):
         # Auto set data the dataset_name to the first insert item
         colors = cycle(colors)
         if ax is None:
-            fig = plt.figure(figsize=(15, 5))
+            plt.figure(figsize=(15, 5))
             ax = plt.gca()
             ax.set_xlim(xlim)
             ax.set_ylim(ylim)
@@ -344,9 +387,9 @@ class GmmManager(object):
         """ Plot bic (bayesian information criterion) or aic for each 
             covariance_type/number of GMM compenents of the specified dataset
         """
+
         # Auto set data the dataset_name to the first inserted dataset
-        dataset_name = self.datasets.keys(
-        )[0] if dataset_name is None else dataset_name
+        dataset_name = self.datasets.keys()[0] if dataset_name is None else dataset_name
 
         # generate gmm if not already done
         if self.gmms[dataset_name] is None:
