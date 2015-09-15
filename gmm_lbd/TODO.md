@@ -1,15 +1,4 @@
 
-# Roadmap
-* [X] améliorer l'overfititing
-* [x] probabilité conditionelle
-* [x] regression
-* [ ] produit
-
-### High level
-* [X] ajouter des mouvements sur plusieurs moteurs
-* [ ] Aligner les enregistrements avec du DTW  
-* [ ] Sequential : concatenation of the GMM
-* [ ] Parralelisation
 
 
 ## GMM Calinon
