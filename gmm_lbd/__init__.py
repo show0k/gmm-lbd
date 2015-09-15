@@ -1,3 +1,4 @@
-from data_manager import GmmManager, plot_2D_mean_covars, SanitizeRecordsForGmm
+# Easy to develop but a bit dirty
 from gmm import LbdGMM
-from operations import gmm_product, influence_gmm
+from data_manager import GmmManager, plot_2D_mean_covars, SanitizeRecordsForGmm
+from operations import prod, seq

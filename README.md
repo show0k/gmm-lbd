@@ -15,7 +15,7 @@ Gaussian mixture experiments for learning by demonstration
 * [ ] Plot ellipse for GMM with more than 2 dimensions
 * [ ] Align movements with DTW  
 * [ ] White detection (at begin and end of movements)
-* [ ] Sequential : concatenation of GMMs
-* [ ] Concurent : product 
-* [ ] Add a coefficiant to rise or low the importance of a movement
+* [X] Sequential : concatenation of GMMs
+* [X] Concurent : product 
+* [X] Add a coefficiant to rise or low the importance of a movement
 * [ ] Add a filter in the sequential combinaison
