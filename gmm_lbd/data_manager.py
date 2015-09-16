@@ -20,7 +20,7 @@ from gmm import LbdGMM
 import json
 
 
-def plot_2D_mean_covars(X, means_covars, ax=None, color='b', size=0.3):
+def plot_2D_mean_covars(means_covars, X=None, ax=None, color='b', size=0.3):
     """Regression datas (mean an covariance) of a GMM
 
     Parameters
@@ -38,8 +38,8 @@ def plot_2D_mean_covars(X, means_covars, ax=None, color='b', size=0.3):
 
     size : float between 0 and 1 related to alpha of fill_between and scalar of scatter
     """
-    means = means_covars[0]
-    covars = means_covars[1]
+    _, means, covars = means_covars
+    X = X if X is not None else _
 
     scalar = 5 * size
     alpha = 0.8 * size
@@ -47,6 +47,8 @@ def plot_2D_mean_covars(X, means_covars, ax=None, color='b', size=0.3):
     if ax is None:
         fig = plt.figure(figsize=(15, 5))
         ax = fig.add_subplot(111)
+        ax._get_lines.color_cycle = cycle(['r', 'g', 'b', 'c', 'm'])
+
 
     try:
         X.shape[1]
@@ -62,6 +64,8 @@ def plot_2D_mean_covars(X, means_covars, ax=None, color='b', size=0.3):
         ymin[n] = means[n] - np.sqrt(covars[n][0])
 
     ax.fill_between(X[:, 0], ymin, ymax, alpha=alpha, color=color)
+
+    return ax
 
 
 class GmmManager(object):
@@ -186,7 +190,7 @@ class GmmManager(object):
                         max(self.datasets[dataset_name][:, 0]),
                         100)
         gmm = self.gmms[dataset_name]
-        return plot_2D_mean_covars(X, gmm.regression(X), ax=ax)
+        return plot_2D_mean_covars(gmm.regression(X), ax=ax)
 
 
     def plot_bics(self, dataset_name=None, ax=None):
@@ -226,7 +230,7 @@ class GmmManager(object):
         spl.set_xlabel('Number of components')
         spl.legend([b[0] for b in bars], self.cv_types)
         return ax
-        
+
 
 ###############################################################################
 # Old, not used anymore

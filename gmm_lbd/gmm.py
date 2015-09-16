@@ -32,7 +32,7 @@ class LbdGMM(mixture.GMM):
                                      random_state=random_state, thresh=thresh, tol=tol, min_covar=min_covar,
                                      n_iter=n_iter, n_init=n_init, params=params, init_params=init_params)
 
-    # override fit
+    # override fit to add the input dataset as a attribute (for conveniance)
     def fit(self, X):
         self.X_ = X
         return super(LbdGMM, self).fit(X)
@@ -52,6 +52,12 @@ class LbdGMM(mixture.GMM):
         """
         return (-2 * self.score(X).sum() +
                 self._n_parameters() * 3 * np.log(X.shape[0]))
+
+    def copy(self):
+        """Create a copy of a LbdGMM object"""
+        import copy
+        return copy.deepcopy(self)
+
 
     def to_ellipses(self, factor=1.0):
         """Compute error ellipses.
@@ -117,7 +123,7 @@ class LbdGMM(mixture.GMM):
 
         return expected_means, expected_covars, expected_weights
 
-    def regression(self, X, indices=np.array([0])):
+    def regression(self, X=None, indices=np.array([0])):
         """Predict approximed means and covariances
 
         Parameters
@@ -130,6 +136,8 @@ class LbdGMM(mixture.GMM):
 
         Returns
         -------
+        regression dataset
+
         approximed_means : array, shape (n_samples, n_features_2)
             Predicted means of missing values.
 
@@ -137,6 +145,10 @@ class LbdGMM(mixture.GMM):
             Predicted covariances of missing values.
 
         """
+
+        # Automaticaly set the regression to the same range that the input datas
+        X = X if X is not None else np.linspace(min(self.X_[:, 0]), max(self.X_[:, 0]), 100)
+
         try:
             n_samples, n_features_1 = X.shape
         except ValueError:
@@ -151,9 +163,9 @@ class LbdGMM(mixture.GMM):
             expected_means, expected_covars, expected_weights = self.conditional_distribution(X[i], indices)
             approximed_means[i] = expected_weights.dot(expected_means)
             approximed_covars[i] = pow(expected_weights, 2).dot(expected_covars.T[0].T)
-        return approximed_means, approximed_covars
+        return X[:, 0], approximed_means, approximed_covars
 
-    def pdf(self, X):
+    def pdf(self, X=None):
         """Compute probability density.
 
         Parameters
@@ -166,10 +178,11 @@ class LbdGMM(mixture.GMM):
         p : array, shape (n_samples,)
             Probability densities of data.
         """
+        X = X if X is not None else self.X_
         p = [multivariate_normal.pdf(X, mean=mean, cov=covar) for (mean, covar) in zip(self.means_, self._get_covars())]
         return np.dot(self.weights_, p)
 
-    def plot_ellipses(self, X, ax=None, colors=['r', 'g', 'b', 'c', 'm'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
+    def plot_ellipses(self, X=None, ax=None, colors=['r', 'g', 'b', 'c', 'm'], ellipses_shapes=np.linspace(0.3, 2.0, 8)):
         """Plot error ellipses of GMM.
 
         Parameters
@@ -186,7 +199,8 @@ class LbdGMM(mixture.GMM):
         ellipses_shapes : vector
             vector of ellipses factors shapes
         """
-        Y = self.predict(X) if X is not None else None
+        X = X if X is not None else self.X_
+        Y = self.predict(X)
 
         if colors is not None:
             colors = cycle(colors)
