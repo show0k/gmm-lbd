@@ -24,6 +24,7 @@ Notebook examples:
 * [X] Concurent : product 
 * [X] Add a coefficiant to rise or low the importance of a movement
 * [ ] Add a filter in the sequential combinaison
+* [ ] Adapt to use an IK model, for performing task space trajectory: __WANTED__
 
 
 
