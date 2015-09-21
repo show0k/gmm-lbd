@@ -25,6 +25,7 @@ Notebook examples:
 * [X] Add a coefficiant to rise or low the importance of a movement
 * [ ] Add a filter in the sequential combinaison
 * [ ] Adapt to use an IK model, for performing task space trajectory: __WANTED__
+* [ ] Incremental definition of the GMM for each new representation @Calinon07HRI (very good idea for etaling computing)
 
 
 
