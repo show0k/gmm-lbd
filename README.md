@@ -6,7 +6,9 @@ Notebook examples:
 * [example 2](https://github.com/show0k/gmm-lbd/blob/master/notebooks/working_demo.ipynb) 
 
 ## Installation
+```bash
 pip install gmm-lbd
+```
 
 OR if you clone this repository, you can make a 
 
