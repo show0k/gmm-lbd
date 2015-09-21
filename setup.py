@@ -8,12 +8,12 @@ except IOError:
 
 setup(
     name="gmm-lbd",
-    version="0.0.2",
+    version="0.0.3",
     description="Some gmm regression experiments for learning by demonstration",
     license="Beer Ware",
     author="Théo Segonds",
     packages=find_packages(),
-    install_requires=[],
+    install_requires=['numpy', 'scipy', 'sklearn', 'pypot'],
     long_description=long_description,
     classifiers=[
         "Programming Language :: Python",
