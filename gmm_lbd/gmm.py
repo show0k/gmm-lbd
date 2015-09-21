@@ -147,7 +147,7 @@ class LbdGMM(mixture.GMM):
         """
 
         # Automaticaly set the regression to the same range that the input datas
-        X = X if X is not None else np.linspace(min(self.X_[:, 0]), max(self.X_[:, 0]), 100)
+        X = X if X is not None else np.linspace(min(self.X_[:, 0]), max(self.X_[:, 0]), 500)
 
         try:
             n_samples, n_features_1 = X.shape

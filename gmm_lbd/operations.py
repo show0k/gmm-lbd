@@ -17,13 +17,13 @@ from sklearn.utils.extmath import pinvh
 from gmm import LbdGMM
 
 
-def prod(X=None, *gmms):
+def conc(X=None, *gmms):
     """Predict a generalized trajectory from multiple independant constraints.
 
     Parameters
     ----------
     X : array-like, shape (n_samples, n_features)
-        Range of regression values
+        Range of,  regression values
     gmms :
 
     """

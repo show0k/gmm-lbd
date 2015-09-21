@@ -188,7 +188,7 @@ class GmmManager(object):
 
         X = np.linspace(min(self.datasets[dataset_name][:, 0]),
                         max(self.datasets[dataset_name][:, 0]),
-                        100)
+                        500)
         gmm = self.gmms[dataset_name]
         return plot_2D_mean_covars(gmm.regression(X), ax=ax)
 
