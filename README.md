@@ -5,6 +5,17 @@ Notebook examples:
 * [example 1](https://github.com/show0k/gmm-lbd/blob/master/notebooks/calinon_tests.ipynb)
 * [example 2](https://github.com/show0k/gmm-lbd/blob/master/notebooks/working_demo.ipynb) 
 
+## Installation
+```bash
+pip install gmm-lbd
+```
+
+OR if you clone this repository, you can make a 
+
+```bash
+python setup.py develop
+```
+
 ## Roadmap
 ### Low level (Gaussian mixture)
 * [X] Automaticly choose the number of gaussians
