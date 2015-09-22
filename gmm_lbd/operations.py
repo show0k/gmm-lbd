@@ -52,6 +52,11 @@ def conc(X=None, *gmms):
 
     return X, generalized_mean, generalized_covar
 
+# def curve_to_gmm(X, generalized_mean, generalized_covar, n_components):
+#     expected_means = np.empty((n_components, 2))
+#     expected_covars = np.empty((n_components, 2, 2))
+#     expected_weights = np.empty(n_components)
+
 
 def influence_gmm(gmm, coef=1.0):
     gmm = gmm.copy()
