@@ -4,8 +4,8 @@
 Gaussian mixture experiments for learning by demonstration
 
 Notebook examples:
-* [example 1](https://github.com/show0k/gmm-lbd/blob/master/notebooks/calinon_tests.ipynb)
-* [example 2](https://github.com/show0k/gmm-lbd/blob/master/notebooks/working_demo.ipynb) 
+* [example 1](notebooks/calinon_tests.ipynb)
+* [example 2](notebooks/working_demo.ipynb) 
 
 ## Installation
 ```bash
