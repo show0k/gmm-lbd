@@ -8,7 +8,7 @@ except IOError:
 
 setup(
     name="gmm-lbd",
-    version="0.0.3",
+    version="0.0.4",
     description="Some gmm regression experiments for learning by demonstration",
     url="https://github.com/show0k/gmm-lbd",
     license="MIT",
