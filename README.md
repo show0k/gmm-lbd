@@ -1,3 +1,5 @@
+[![Binder](http://mybinder.org/badge.svg)](http://mybinder.org/repo/show0k/gmm-lbd) 
+
 # GMM-lbd
 Gaussian mixture experiments for learning by demonstration
 
