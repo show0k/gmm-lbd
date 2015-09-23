@@ -1,4 +1,5 @@
-[![Binder](http://mybinder.org/badge.svg)](http://mybinder.org/repo/show0k/gmm-lbd) 
+
+Try it online:  [![Binder](http://mybinder.org/badge.svg)](http://mybinder.org/repo/show0k/gmm-lbd/notebooks) 
 
 # GMM-lbd
 Gaussian mixture experiments for learning by demonstration
